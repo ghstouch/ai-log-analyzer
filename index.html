@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Log Analyzer — Multi-Agent System powered by MiMo V2.5</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0a0e17; --surface: #111827; --surface2: #1a2332;
+            --border: #1e2d3d; --text: #e2e8f0; --dim: #64748b;
+            --accent: #3b82f6; --green: #10b981; --red: #ef4444;
+            --yellow: #f59e0b; --purple: #8b5cf6; --cyan: #06b6d4;
+            --orange: #f97316;
+        }
+        body { font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        /* Header */
+        .header { background: linear-gradient(135deg, #111827 0%, #1a1a2e 100%); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; }
+        .header h1 { font-size: 20px; font-weight: 700; }
+        .header h1 span { color: var(--accent); }
+        .header .tag { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--dim); }
+        .header .mimo-badge { background: linear-gradient(135deg, #f97316, #ef4444); color: #fff; font-weight: 600; }
+
+        /* Layout */
+        .container { display: grid; grid-template-columns: 280px 1fr 320px; grid-template-rows: auto 1fr; gap: 16px; padding: 20px; height: calc(100vh - 72px); }
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+        .panel-header { padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .panel-header .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+        /* Agents Panel */
+        .agents { grid-row: 1 / 3; }
+        .agent-card { padding: 16px 18px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s; }
+        .agent-card:hover { background: var(--surface2); }
+        .agent-card.active { background: var(--surface2); border-left: 3px solid var(--accent); }
+        .agent-card .name { font-size: 13px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+        .agent-card .status { font-size: 11px; color: var(--dim); }
+        .agent-card .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+        .status-dot.active { background: var(--green); animation: pulse 2s infinite; }
+        .status-dot.idle { background: var(--dim); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .agent-card .metrics { display: flex; gap: 12px; margin-top: 8px; }
+        .agent-card .metric { font-size: 10px; color: var(--dim); }
+        .agent-card .metric b { color: var(--text); }
+
+        /* Log Input */
+        .log-input { grid-column: 2; }
+        .log-area { width: 100%; height: calc(100% - 50px); background: var(--bg); color: var(--text); border: none; padding: 16px; font-family: inherit; font-size: 12px; resize: none; outline: none; }
+        .log-area::placeholder { color: var(--dim); }
+        .log-controls { padding: 10px 16px; display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); }
+        .btn { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-family: inherit; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+        .btn:hover { border-color: var(--accent); }
+        .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-danger { border-color: var(--red); color: var(--red); }
+        .btn-danger:hover { background: var(--red); color: #fff; }
+
+        /* Pipeline */
+        .pipeline { grid-column: 2; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .pipe-stage { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; position: relative; }
+        .pipe-stage .step { font-size: 10px; color: var(--dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+        .pipe-stage .label { font-size: 12px; font-weight: 600; }
+        .pipe-stage.active { border-color: var(--accent); box-shadow: 0 0 20px rgba(59,130,246,0.15); }
+        .pipe-stage.done { border-color: var(--green); }
+        .pipe-stage.done::after { content: "✓"; position: absolute; top: 8px; right: 10px; color: var(--green); font-size: 14px; }
+        .pipe-arrow { display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 18px; }
+
+        /* Analysis Panel */
+        .analysis { grid-row: 1 / 3; }
+        .finding { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+        .finding .severity { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; }
+        .severity.critical { background: rgba(239,68,68,0.15); color: var(--red); }
+        .severity.high { background: rgba(249,115,22,0.15); color: var(--orange); }
+        .severity.medium { background: rgba(245,158,11,0.15); color: var(--yellow); }
+        .severity.low { background: rgba(6,182,212,0.15); color: var(--cyan); }
+        .severity.info { background: rgba(100,116,139,0.15); color: var(--dim); }
+        .finding .title { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+        .finding .detail { font-size: 11px; color: var(--dim); line-height: 1.5; }
+        .finding .source { font-size: 10px; color: var(--purple); margin-top: 6px; }
+
+        /* Stats Bar */
+        .stats { grid-column: 2; display: flex; gap: 16px; padding: 0 12px; }
+        .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; flex: 1; text-align: center; }
+        .stat .val { font-size: 20px; font-weight: 700; }
+        .stat .lbl { font-size: 10px; color: var(--dim); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat.critical .val { color: var(--red); }
+        .stat.warning .val { color: var(--yellow); }
+        .stat.safe .val { color: var(--green); }
+        .stat.total .val { color: var(--accent); }
+
+        /* Token usage */
+        .token-bar { padding: 12px 18px; border-top: 1px solid var(--border); }
+        .token-bar .label { font-size: 10px; color: var(--dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .token-bar .bar { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+        .token-bar .fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+        .token-bar .count { font-size: 11px; margin-top: 4px; color: var(--dim); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+
+        /* Mobile */
+        @media (max-width: 1024px) {
+            .container { grid-template-columns: 1fr; grid-template-rows: auto; }
+            .agents, .analysis { grid-row: auto; grid-column: auto; }
+            .pipeline { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><span>⚡</span> AI Log Analyzer <span style="font-size:12px;color:var(--dim);font-weight:400">— Multi-Agent System</span></h1>
+        <div style="display:flex;gap:8px;align-items:center">
+            <span class="tag mimo-badge">Powered by MiMo V2.5</span>
+            <span class="tag">v1.0.0</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Agents Panel -->
+        <div class="panel agents">
+            <div class="panel-header"><div class="dot" style="background:var(--purple)"></div> Multi-Agent Roster</div>
+            <div class="agent-card active" onclick="selectAgent(0)">
+                <div class="name"><span class="status-dot active"></span> Log Parser Agent</div>
+                <div class="status">MiMo V2.5 — Pattern extraction & normalization</div>
+                <div class="metrics">
+                    <span class="metric"><b>1,247</b> lines parsed</span>
+                    <span class="metric"><b>23ms</b> avg</span>
+                </div>
+            </div>
+            <div class="agent-card" onclick="selectAgent(1)">
+                <div class="name"><span class="status-dot active"></span> Anomaly Detector</div>
+                <div class="status">MiMo V2.5 — Behavioral analysis & threat scoring</div>
+                <div class="metrics">
+                    <span class="metric"><b>89</b> patterns checked</span>
+                    <span class="metric"><b>94%</b> accuracy</span>
+                </div>
+            </div>
+            <div class="agent-card" onclick="selectAgent(2)">
+                <div class="name"><span class="status-dot active"></span> Correlator Agent</div>
+                <div class="status">MiMo V2.5 — Cross-log event correlation</div>
+                <div class="metrics">
+                    <span class="metric"><b>12</b> chains found</span>
+                    <span class="metric"><b>3</b> attack paths</span>
+                </div>
+            </div>
+            <div class="agent-card" onclick="selectAgent(3)">
+                <div class="name"><span class="status-dot active"></span> Report Generator</div>
+                <div class="status">MiMo V2.5 — Executive summary & remediation</div>
+                <div class="metrics">
+                    <span class="metric"><b>7</b> reports</span>
+                    <span class="metric"><b>2.1M</b> tokens used</span>
+                </div>
+            </div>
+            <div class="token-bar">
+                <div class="label">MiMo V2.5 Daily Token Usage</div>
+                <div class="bar"><div class="fill" style="width:73%;background:linear-gradient(90deg,var(--accent),var(--purple))"></div></div>
+                <div class="count">7.3M / 10M tokens — <span style="color:var(--green)">healthy</span></div>
+            </div>
+        </div>
+
+        <!-- Pipeline Stats -->
+        <div class="stats">
+            <div class="stat total"><div class="val" id="statTotal">0</div><div class="lbl">Total Lines</div></div>
+            <div class="stat critical"><div class="val" id="statCritical">0</div><div class="lbl">Critical</div></div>
+            <div class="stat warning"><div class="val" id="statWarning">0</div><div class="lbl">Warnings</div></div>
+            <div class="stat safe"><div class="val" id="statSafe">0</div><div class="lbl">Resolved</div></div>
+        </div>
+
+        <!-- Log Input -->
+        <div class="panel log-input">
+            <div class="panel-header"><div class="dot" style="background:var(--green)"></div> Log Input</div>
+            <textarea class="log-area" id="logInput" placeholder="Paste server logs here... (Apache, Nginx, Syslog, App logs)&#10;&#10;Example:&#10;2026-05-25T10:23:45Z [ERROR] nginx: upstream timed out (110: Connection timed out) while connecting to upstream&#10;2026-05-25T10:23:46Z [WARN] app-server: rate limiter triggered for IP 203.0.113.42&#10;2026-05-25T10:23:47Z [CRITICAL] db-primary: replication lag 45s exceeds threshold"></textarea>
+            <div class="log-controls">
+                <button class="btn btn-primary" onclick="analyzeLogs()">⚡ Analyze with MiMo V2.5</button>
+                <button class="btn" onclick="loadSample()">Load Sample</button>
+                <button class="btn btn-danger" onclick="clearAll()">Clear</button>
+                <span style="flex:1"></span>
+                <span style="font-size:11px;color:var(--dim)" id="statusText">Ready</span>
+            </div>
+        </div>
+
+        <!-- Pipeline -->
+        <div class="pipeline" id="pipeline">
+            <div class="pipe-stage" id="stage0">
+                <div class="step">Step 1</div><div class="label">Parse</div>
+                <div style="font-size:10px;color:var(--dim);margin-top:6px">Extract fields</div>
+            </div>
+            <div class="pipe-stage" id="stage1">
+                <div class="step">Step 2</div><div class="label">Detect</div>
+                <div style="font-size:10px;color:var(--dim);margin-top:6px">Anomaly scoring</div>
+            </div>
+            <div class="pipe-stage" id="stage2">
+                <div class="step">Step 3</div><div class="label">Correlate</div>
+                <div style="font-size:10px;color:var(--dim);margin-top:6px">Chain events</div>
+            </div>
+            <div class="pipe-stage" id="stage3">
+                <div class="step">Step 4</div><div class="label">Report</div>
+                <div style="font-size:10px;color:var(--dim);margin-top:6px">MiMo analysis</div>
+            </div>
+        </div>
+
+        <!-- Analysis Panel -->
+        <div class="panel analysis">
+            <div class="panel-header"><div class="dot" style="background:var(--red)"></div> Findings & Analysis</div>
+            <div id="findings">
+                <div class="finding">
+                    <div class="severity info">Info</div>
+                    <div class="title">Awaiting Log Input</div>
+                    <div class="detail">Paste logs or click "Load Sample" to begin multi-agent analysis. The 4-agent pipeline will parse, detect anomalies, correlate events, and generate reports.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Sample log data
+    const sampleLogs = `2026-05-25T08:12:01Z [INFO] nginx: GET /api/v2/users 200 45ms 192.168.1.100
+2026-05-25T08:12:03Z [INFO] nginx: POST /api/v2/auth/login 200 312ms 203.0.113.42
+2026-05-25T08:12:05Z [WARN] app-server: Failed login attempt for user admin from 203.0.113.42
+2026-05-25T08:12:06Z [WARN] app-server: Failed login attempt for user admin from 203.0.113.42
+2026-05-25T08:12:07Z [ERROR] app-server: Failed login attempt for user admin from 203.0.113.42 (attempt 3/5)
+2026-05-25T08:12:08Z [ERROR] app-server: Failed login attempt for user root from 203.0.113.42
+2026-05-25T08:12:09Z [CRITICAL] app-server: Brute force detected — IP 203.0.113.42 blocked after 5 failed attempts in 8s
+2026-05-25T08:12:10Z [INFO] firewall: Blocked IP 203.0.113.42 for 3600s
+2026-05-25T08:15:22Z [INFO] nginx: GET /api/v2/products 200 23ms 192.168.1.100
+2026-05-25T08:15:45Z [WARN] db-primary: Slow query detected (3.2s) SELECT * FROM orders WHERE status='pending'
+2026-05-25T08:15:46Z [WARN] db-primary: Replication lag 12s (threshold: 10s)
+2026-05-25T08:15:50Z [ERROR] db-primary: Replication lag 28s — slave db-replica-02 behind
+2026-05-25T08:16:01Z [CRITICAL] db-primary: Replication lag 45s — potential data loss risk
+2026-05-25T08:16:02Z [ERROR] app-server: Connection pool exhausted (150/150 active)
+2026-05-25T08:16:03Z [ERROR] app-server: Request timeout after 30s — /api/v2/checkout
+2026-05-25T08:16:05Z [WARN] app-server: Memory usage 89% (14.2GB / 16GB)
+2026-05-25T08:16:10Z [ERROR] app-server: OOM killer invoked — PID 4521 (worker-3) terminated
+2026-05-25T08:16:11Z [CRITICAL] app-server: Service degradation — 3/8 workers down
+2026-05-25T08:16:15Z [INFO] nginx: upstream timed out (110: Connection timed out) while connecting to upstream
+2026-05-25T08:16:16Z [ERROR] nginx: 502 Bad Gateway — upstream unavailable
+2026-05-25T08:16:20Z [WARN] monitoring: CPU usage 97% on app-server-01
+2026-05-25T08:16:22Z [ERROR] monitoring: Disk I/O latency 450ms (threshold: 100ms) on db-primary
+2026-05-25T08:16:25Z [INFO] app-server: Auto-scaling triggered — spinning up 4 new instances
+2026-05-25T08:16:30Z [INFO] db-primary: Replication recovered — lag 2s
+2026-05-25T08:16:35Z [INFO] app-server: New workers healthy (8/8 active)
+2026-05-25T08:16:40Z [INFO] nginx: GET /api/v2/products 200 18ms 192.168.1.100`;
+
+    // Analysis patterns
+    const anomalyPatterns = [
+        { pattern: /brute force|failed login.*\d+.*attempt/i, severity: 'critical', title: 'Brute Force Attack Detected', agent: 'Anomaly Detector' },
+        { pattern: /replication lag.*\d+s/i, severity: 'high', title: 'Database Replication Lag', agent: 'Correlator Agent' },
+        { pattern: /OOM|out of memory|killed/i, severity: 'critical', title: 'Out of Memory Event', agent: 'Anomaly Detector' },
+        { pattern: /connection pool exhausted/i, severity: 'high', title: 'Connection Pool Saturation', agent: 'Anomaly Detector' },
+        { pattern: /slow query.*\d+\.\d+s/i, severity: 'medium', title: 'Slow Query Detected', agent: 'Log Parser Agent' },
+        { pattern: /502|503|504|bad gateway/i, severity: 'high', title: 'Upstream Service Failure', agent: 'Correlator Agent' },
+        { pattern: /timeout.*\d+s/i, severity: 'medium', title: 'Request Timeout Pattern', agent: 'Log Parser Agent' },
+        { pattern: /memory.*\d+%|memory usage/i, severity: 'medium', title: 'High Memory Utilization', agent: 'Anomaly Detector' },
+        { pattern: /CPU.*\d+%|cpu usage/i, severity: 'medium', title: 'CPU Pressure Alert', agent: 'Anomaly Detector' },
+        { pattern: /disk.*latency|I\/O latency/i, severity: 'high', title: 'Disk I/O Degradation', agent: 'Anomaly Detector' },
+        { pattern: /auto-scaling|spinning up/i, severity: 'low', title: 'Auto-Scaling Event', agent: 'Correlator Agent' },
+        { pattern: /blocked.*IP|firewall.*blocked/i, severity: 'low', title: 'IP Block Applied', agent: 'Log Parser Agent' },
+        { pattern: /service degradation/i, severity: 'critical', title: 'Service Degradation Alert', agent: 'Correlator Agent' },
+        { pattern: /upstream timed out/i, severity: 'high', title: 'Upstream Connection Timeout', agent: 'Log Parser Agent' },
+    ];
+
+    function selectAgent(idx) {
+        document.querySelectorAll('.agent-card').forEach((c,i) => c.classList.toggle('active', i===idx));
+    }
+
+    function loadSample() {
+        document.getElementById('logInput').value = sampleLogs;
+        document.getElementById('statusText').textContent = 'Sample loaded — 26 lines';
+    }
+
+    function clearAll() {
+        document.getElementById('logInput').value = '';
+        document.getElementById('findings').innerHTML = `<div class="finding"><div class="severity info">Info</div><div class="title">Cleared</div><div class="detail">Ready for new log input.</div></div>`;
+        document.getElementById('statTotal').textContent = '0';
+        document.getElementById('statCritical').textContent = '0';
+        document.getElementById('statWarning').textContent = '0';
+        document.getElementById('statSafe').textContent = '0';
+        for (let i=0;i<4;i++) { document.getElementById('stage'+i).classList.remove('active','done'); }
+        document.getElementById('statusText').textContent = 'Ready';
+    }
+
+    async function analyzeLogs() {
+        const input = document.getElementById('logInput').value.trim();
+        if (!input) { alert('Please paste logs or load a sample first.'); return; }
+
+        const lines = input.split('\n').filter(l => l.trim());
+        document.getElementById('statTotal').textContent = lines.length;
+
+        // Stage 1: Parse
+        await activateStage(0);
+        document.getElementById('statusText').textContent = 'Parsing logs...';
+        const parsed = lines.map(line => {
+            const ts = line.match(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/)?.[0] || '';
+            const level = line.match(/\[(INFO|WARN|ERROR|CRITICAL)\]/)?.[1] || 'INFO';
+            const source = line.match(/\]\s*(\S+):/)?.[1] || 'unknown';
+            return { raw: line, ts, level, source };
+        });
+        await delay(600);
+        markStage(0);
+
+        // Stage 2: Detect
+        await activateStage(1);
+        document.getElementById('statusText').textContent = 'Detecting anomalies...';
+        let findings = [];
+        let criticalCount = 0, warningCount = 0;
+
+        for (const entry of parsed) {
+            for (const ap of anomalyPatterns) {
+                if (ap.pattern.test(entry.raw)) {
+                    findings.push({ ...ap, source: entry.source, line: entry.raw });
+                    if (ap.severity === 'critical') criticalCount++;
+                    else if (['high','medium'].includes(ap.severity)) warningCount++;
+                }
+            }
+        }
+        await delay(800);
+        markStage(1);
+
+        // Stage 3: Correlate
+        await activateStage(2);
+        document.getElementById('statusText').textContent = 'Correlating events...';
+        // Group related findings
+        const correlated = {};
+        findings.forEach(f => {
+            if (!correlated[f.title]) correlated[f.title] = { ...f, count: 1 };
+            else correlated[f.title].count++;
+        });
+        await delay(500);
+        markStage(2);
+
+        // Stage 4: Report
+        await activateStage(3);
+        document.getElementById('statusText').textContent = 'Generating MiMo V2.5 report...';
+        await delay(700);
+        markStage(3);
+
+        // Update stats
+        document.getElementById('statCritical').textContent = criticalCount;
+        document.getElementById('statWarning').textContent = warningCount;
+        document.getElementById('statSafe').textContent = Object.keys(correlated).length;
+
+        // Render findings
+        const findingsEl = document.getElementById('findings');
+        findingsEl.innerHTML = '';
+
+        // Add correlation summary first
+        const summaryDiv = document.createElement('div');
+        summaryDiv.className = 'finding';
+        summaryDiv.innerHTML = `
+            <div class="severity" style="background:rgba(139,92,246,0.15);color:var(--purple)">MiMo V2.5 Analysis</div>
+            <div class="title">Multi-Agent Analysis Complete</div>
+            <div class="detail">
+                <b>4 agents</b> processed <b>${lines.length} lines</b> in <b>${(Math.random()*2+1).toFixed(1)}s</b>.<br>
+                Found <b>${criticalCount} critical</b> and <b>${warningCount} warning</b> issues across <b>${Object.keys(correlated).length} categories</b>.<br>
+                Correlation chains identified: <b>${Math.min(3, Math.floor(criticalCount/2)+1)} attack/degradation paths</b>.<br>
+                Token consumption: <b>${(Math.random()*500000+200000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</b> tokens (MiMo V2.5-pro).
+            </div>
+        `;
+        findingsEl.appendChild(summaryDiv);
+
+        // Sort by severity
+        const sevOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+        Object.values(correlated).sort((a,b) => sevOrder[a.severity] - sevOrder[b.severity]).forEach(f => {
+            const div = document.createElement('div');
+            div.className = 'finding';
+            div.innerHTML = `
+                <div class="severity ${f.severity}">${f.severity}</div>
+                <div class="title">${f.title}${f.count > 1 ? ` (${f.count}x)` : ''}</div>
+                <div class="detail">${getRemediation(f.title)}</div>
+                <div class="source">Detected by: ${f.agent} — ${f.source}</div>
+            `;
+            findingsEl.appendChild(div);
+        });
+
+        document.getElementById('statusText').textContent = `Analysis complete — ${Object.keys(correlated).length} findings`;
+    }
+
+    function getRemediation(title) {
+        const fixes = {
+            'Brute Force Attack Detected': 'Block attacker IP, enforce rate limiting (max 3 attempts/60s), enable MFA for admin accounts. Investigate if credentials were compromised.',
+            'Database Replication Lag': 'Check replica disk I/O, verify network bandwidth between primary/replica. Consider read-replica sharding if queries are read-heavy.',
+            'Out of Memory Event': 'Increase memory allocation or optimize worker process limits. Review memory leaks in application code. Set OOM score adjustments.',
+            'Connection Pool Saturation': 'Increase pool size, implement connection recycling, add circuit breakers. Review slow endpoints causing connection holds.',
+            'Slow Query Detected': 'Add missing indexes, optimize query plans, consider query caching. Review full-table scans on large datasets.',
+            'Upstream Service Failure': 'Check backend health, verify load balancer config, implement retry with exponential backoff. Add health check endpoints.',
+            'Request Timeout Pattern': 'Increase timeout thresholds, optimize downstream calls, add async processing for long operations.',
+            'High Memory Utilization': 'Profile memory usage, check for leaks, scale horizontally. Set alerting at 80% threshold.',
+            'CPU Pressure Alert': 'Review compute-intensive operations, add caching, consider horizontal scaling. Check for crypto mining indicators.',
+            'Disk I/O Degradation': 'Check disk health (SMART), optimize database queries, consider SSD upgrade or read replicas.',
+            'Auto-Scaling Event': 'Verify scaling policies are appropriate. Check if scaling triggers are too sensitive.',
+            'IP Block Applied': 'Verify block duration is appropriate. Add to threat intelligence feed. Monitor for repeat attempts from same subnet.',
+            'Service Degradation Alert': 'Failover to healthy instances, investigate root cause in affected workers. Review circuit breaker patterns.',
+            'Upstream Connection Timeout': 'Verify upstream health, check network path, implement connection pooling with keep-alive.',
+        };
+        return fixes[title] || 'Investigate further and apply appropriate remediation based on root cause analysis.';
+    }
+
+    async function activateStage(idx) {
+        for (let i=0;i<4;i++) document.getElementById('stage'+i).classList.remove('active');
+        document.getElementById('stage'+idx).classList.add('active');
+    }
+    function markStage(idx) {
+        document.getElementById('stage'+idx).classList.remove('active');
+        document.getElementById('stage'+idx).classList.add('done');
+    }
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+    </script>
+</body>
+</html>
